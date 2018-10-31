@@ -1,4 +1,4 @@
-## Vertebral Segmentation
+# Vertebral Segmentation
 
 [![](https://img.shields.io/badge/language-python3-blue.svg)](https://www.python.org/)
 [![](https://img.shields.io/badge/framework-TensorFlow-blue.svg)](https://www.tensorflow.org/)
@@ -32,9 +32,29 @@ voxel 在服务器上的位置：
 
 ----
 
-### Mask RCNN
+## Mask RCNN
 
  🌀 ***2018-10-30 17:28 Update***
 
 现在的思路是：将脊骨数据处理成COCO的格式，然后试试 Mask RCNN 在医疗图像上的效果。 
+ 
+### Training on Your Own Dataset
+
+Start by reading this [blog post about the balloon color splash sample](https://engineering.matterport.com/splash-of-color-instance-segmentation-with-mask-r-cnn-and-tensorflow-7c761e238b46). It covers the process starting from annotating images to training to using the results in a sample application.
+
+In summary, to train the model on your own dataset you'll need to extend two classes:
+
+```Config```
+This class contains the default configuration. Subclass it and modify the attributes you need to change.
+
+```Dataset```
+This class provides a consistent way to work with any dataset. 
+***It allows you to use new datasets for training without having to change 
+the code of the model.*** It also supports loading multiple datasets at the
+same time, which is useful if the objects you want to detect are not 
+all available in one dataset. 
+
+See examples in `samples/shapes/train_shapes.ipynb`, `samples/coco/coco.py`, `samples/balloon/balloon.py`, and `samples/nucleus/nucleus.py`.
+
+例子 `samples/nucleus/nucleus.py` 和脊骨分割问题非常相似！
  
