@@ -58,3 +58,16 @@ See examples in `samples/shapes/train_shapes.ipynb`, `samples/coco/coco.py`, `sa
 
 例子 `samples/nucleus/nucleus.py` 和脊骨分割问题非常相似！
  
+ 🌀 ***2018-10-31 15:47 Update***
+ 
+ 在自己的脊骨数据集上训练，耗时不到1h，得到训练好的模型，路径：`/DATA5_DB8/data/sqpeng/Projects/Mask-RCNN-Vertebral-Segmentation/logs/vertebral20181030T2252/mask_rcnn_vertebral_0030.h5`
+ 
+ 对模型预测以及分析参见 [inspect_vertebral_model.ipynb](https://github.com/pengshiqi/Mask-RCNN-Vertebral-Segmentation/blob/master/samples/vertebral/inspect_vertebral_model.ipynb)。
+ 
+ 效果非常棒👍！毕竟 Mask-RCNN 是 state-of-the-art ...
+ 
+ 后面要有所改进其实挺困难的... 可以有这样几个思路：
+ 
+ 1. 考虑脊骨数据的特征，脊骨基本上是分布在一条曲线上，可以对模型加上一个曲线的约束。（感觉不太行。。。）
+ 
+ 2. 利用 GAN 做数据增强。 （靠谱吗？宇博说训练数据太少）
