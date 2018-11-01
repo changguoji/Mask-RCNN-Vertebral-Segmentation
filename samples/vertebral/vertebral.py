@@ -36,6 +36,7 @@ import imgaug  # https://github.com/aleju/imgaug (pip3 install imgaug)
 import skimage.draw
 import datetime
 from PIL import Image
+from matplotlib import pyplot as plt
 
 # Download and install the Python COCO tools from https://github.com/waleedka/coco
 # That's a fork from the original https://github.com/pdollar/coco with a bug
@@ -58,6 +59,8 @@ ROOT_DIR = os.path.abspath("../../")
 sys.path.append(ROOT_DIR)  # To find local version of the library
 from mrcnn.config import Config
 from mrcnn import model as modellib, utils
+from mrcnn import visualize
+from mrcnn.visualize import display_images
 
 # Path to trained weights file
 COCO_WEIGHTS_PATH = os.path.join(ROOT_DIR, "mask_rcnn_coco.h5")
@@ -236,10 +239,18 @@ def color_splash(image, mask):
     return splash
 
 
-def detect_and_color_splash(model, image_path=None):
-    assert image_path
+def test(model, image_path=None):
+    def get_ax(rows=1, cols=1, size=16):
+        """Return a Matplotlib Axes array to be used in
+        all visualizations in the notebook. Provide a
+        central point to control graph sizes.
 
-    # Image or video?
+        Adjust the size attribute to control how big to render images
+        """
+        _, ax = plt.subplots(rows, cols, figsize=(size * cols, size * rows))
+        return ax
+
+    # 测试某一张照片
     if image_path:
         # Run model detection and generate the color splash effect
         print("Running on {}".format(args.image))
@@ -253,7 +264,34 @@ def detect_and_color_splash(model, image_path=None):
         file_name = "splash_{:%Y%m%dT%H%M%S}.png".format(datetime.datetime.now())
         skimage.io.imsave(file_name, splash)
 
-    print("Saved to ", file_name)
+        print("Saved to ", file_name)
+    # 测试整个测试集
+    else:
+        # test dataset
+        dataset = VertebralDataset()
+        dataset.load_vertebral(args.dataset, "val")
+        dataset.prepare()
+
+        for image_id in dataset.image_ids:
+            image, image_meta, gt_class_id, gt_bbox, gt_mask = \
+                modellib.load_image_gt(dataset, config, image_id, use_mini_mask=False)
+            info = dataset.image_info[image_id]
+            print("image ID: {}.{} ({}) {}".format(info["source"], info["id"], image_id,
+                                                   dataset.image_reference(image_id)))
+
+            # Run object detection
+            results = model.detect([image], verbose=1)
+
+            # Display results
+            ax = get_ax(1)
+            r = results[0]
+            file_name = os.path.join('/DATA5_DB8/data/sqpeng/Projects/Mask-RCNN-Vertebral-Segmentation/seg_results',
+                                     f'{info["id"]}.png')
+            visualize.display_instances(image, r['rois'], r['masks'], r['class_ids'],
+                                        dataset.class_names, r['scores'], ax=ax,
+                                        title="Predictions",
+                                        save_path=file_name)
+            print("Saved to ", file_name)
 
 ############################################################
 #  COCO Evaluation
@@ -285,16 +323,16 @@ if __name__ == '__main__':
                         metavar="/path/to/logs/",
                         help='Logs and checkpoints directory (default=logs/)')
     parser.add_argument('--image', required=False,
-                        metavar="path or URL to image",
+                        metavar="path to image",
                         help='Image to apply the color splash effect on')
     args = parser.parse_args()
 
     # Validate arguments
     if args.command == "train":
         assert args.dataset, "Argument --dataset is required for training"
-    elif args.command == "test":
-        assert args.image, \
-            "Provide --image to apply color splash"
+    # elif args.command == "test":
+    #     assert args.image, \
+    #         "Provide --image to apply color splash"
 
     print("Weights: ", args.weights)
     print("Dataset: ", args.dataset)
@@ -352,7 +390,7 @@ if __name__ == '__main__':
     if args.command == "train":
         train(model)
     elif args.command == "test":
-        detect_and_color_splash(model, image_path=args.image)
+        test(model, image_path=args.image)
     else:
         print("'{}' is not recognized. "
               "Use 'train' or 'splash'".format(args.command))
