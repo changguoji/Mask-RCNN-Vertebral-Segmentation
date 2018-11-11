@@ -56,7 +56,7 @@ all available in one dataset.
 
 See examples in `samples/shapes/train_shapes.ipynb`, `samples/coco/coco.py`, `samples/balloon/balloon.py`, and `samples/nucleus/nucleus.py`.
 
-例子 `samples/nucleus/nucleus.py` 和脊骨分割问题非常相似！
+例子 `samples/balloon/balloon.py` 和脊骨分割问题非常相似！
  
  🌀 ***2018-10-31 15:47 Update***
  
@@ -68,6 +68,15 @@ See examples in `samples/shapes/train_shapes.ipynb`, `samples/coco/coco.py`, `sa
  
  后面要有所改进其实挺困难的... 可以有这样几个思路：
  
- 1. 考虑脊骨数据的特征，脊骨基本上是分布在一条曲线上，可以对模型加上一个曲线的约束。（感觉不太行。。。）
+ 1. 考虑脊骨数据的特征，脊骨基本上是分布在一条曲线上，可以对模型加上一个曲线的约束。（感觉可以一试）
  
  2. 利用 GAN 做数据增强。 （靠谱吗？宇博说训练数据太少）
+ 
+ 🌀 ***2018-11-11 16:57 Update***
+  
+ 分割结果Demo：
+ 
+ ![](./img/Picture1.png)
+ 
+ ![](./img/Picture2.png)
+  

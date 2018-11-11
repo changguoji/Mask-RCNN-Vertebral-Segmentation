@@ -111,7 +111,7 @@ class VertebralDataset(utils.Dataset):
         """
 
         # Add classes. We have only one class to add.
-        self.add_class("vertebral", 1, "vertebral")
+        self.add_class("vertebrae", 1, "vertebrae")
 
         # Train or validation dataset?
         assert subset in ["train", "val"]
@@ -148,7 +148,7 @@ class VertebralDataset(utils.Dataset):
                     })
 
             self.add_image(
-                'vertebral',
+                'vertebrae',
                 image_id=patient,  # use patient id as a unique image id
                 path=os.path.join(dataset_dir, f'{patient}.png'),
                 width=width,
@@ -170,7 +170,7 @@ class VertebralDataset(utils.Dataset):
         """
         # If not a vertebral image, delegate to parent class.
         image_info = self.image_info[image_id]
-        if image_info["source"] != "vertebral":
+        if image_info["source"] != "vertebrae":
             return super(self.__class__, self).load_mask(image_id)
 
         # Convert polygons to a bitmap mask of shape
