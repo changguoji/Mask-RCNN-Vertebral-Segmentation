@@ -12,25 +12,21 @@ Usage: import the module (see Jupyter notebooks for examples), or run from
        the command line as such:
 
     # Train a new model starting from pre-trained COCO weights
-    python3 balloon.py train --dataset=/path/to/balloon/dataset --weights=coco
+    python3 vertebral.py train --dataset=/path/to/balloon/dataset --weights=coco
 
     # Resume training a model that you had trained earlier
-    python3 balloon.py train --dataset=/path/to/balloon/dataset --weights=last
-
-    # Train a new model starting from ImageNet weights
-    python3 balloon.py train --dataset=/path/to/balloon/dataset --weights=imagenet
+    python3 vertebral.py train --dataset=/path/to/balloon/dataset --weights=last
 
     # Apply color splash to an image
-    python3 balloon.py splash --weights=/path/to/weights/file.h5 --image=<URL or path to file>
+    python3 vertebral.py test --weights=/path/to/weights/file.h5 --image=<URL or path to file>
 
-    # Apply color splash to video using the last weights you trained
-    python3 balloon.py splash --weights=last --video=<URL or path to file>
 """
 
 import os
 import sys
 import time
 import json
+import math
 import numpy as np
 import imgaug  # https://github.com/aleju/imgaug (pip3 install imgaug)
 import skimage.draw
@@ -251,6 +247,7 @@ def test(model, image_path=None):
         return ax
 
     # 测试某一张照片
+    # todo
     if image_path:
         # Run model detection and generate the color splash effect
         print("Running on {}".format(args.image))
@@ -272,7 +269,8 @@ def test(model, image_path=None):
         dataset.load_vertebral(args.dataset, "val")
         dataset.prepare()
 
-        for image_id in dataset.image_ids:
+        def roi_filter(image_id):
+            """ 过滤掉误分割的区域 """
             image, image_meta, gt_class_id, gt_bbox, gt_mask = \
                 modellib.load_image_gt(dataset, config, image_id, use_mini_mask=False)
             info = dataset.image_info[image_id]
@@ -285,12 +283,201 @@ def test(model, image_path=None):
             # Display results
             ax = get_ax(1)
             r = results[0]
-            file_name = os.path.join('/DATA5_DB8/data/sqpeng/Projects/Mask-RCNN-Vertebral-Segmentation/seg_results',
+
+            # pprint(r['rois'])
+
+            # 对每个roi区域的怀疑，编号与r['rois']相同
+            suspect_dict = {i: 0 for i in range(len(r['rois']))}
+
+            # ------------------------------------ 曲线拟合 ----------------------------------
+            # 将ROI从上到下排序，每个tuple三个值： 1. 序号； 2. ROI区域坐标 y1, x1, y2, x2； 3. 中心点坐标: y_mean, x_mean
+            ordered_rois = zip(range(len(r['rois'])),
+                               r['rois'],
+                               [((r['rois'][i][0] + r['rois'][i][2]) // 2, (r['rois'][i][1] + r['rois'][i][3]) // 2)
+                                for i in range(len(r['rois']))])
+            ordered_rois = list(sorted(ordered_rois, key=lambda x: x[1][0]))
+
+            # pprint(ordered_rois)
+
+            # 用三次曲线拟合中心点
+            x = np.array([xx[2][0] for xx in ordered_rois])
+            y = np.array([xx[2][1] for xx in ordered_rois])
+
+            f1 = np.polyfit(x, y, 3)
+            p1 = np.poly1d(f1)
+
+            # y_vals = p1(x)
+
+            # 计算每个中心点到拟合曲线的距离
+            dist = [9999999] * len(ordered_rois)
+            ordered_dist = []
+
+            for i, roi in enumerate(ordered_rois):
+                index, _, (x_m, y_m) = roi
+                # 遍历所有点，求点到曲线的最近距离
+                for xx in range(x[0], x[-1] + 1):
+                    dist[index] = min(dist[index], round(math.sqrt((x_m - xx) ** 2 + (y_m - p1(xx)) ** 2), 2))
+
+                # 越远的点怀疑程度越大
+                if dist[index] > 140:
+                    suspect_dict[index] += 3
+                elif dist[index] > 80:
+                    suspect_dict[index] += 1
+                elif dist[index] > 20:
+                    suspect_dict[index] -= 1
+                elif dist[index] > 10:
+                    suspect_dict[index] -= 3
+                else:
+                    suspect_dict[index] -= 4
+
+                ordered_dist.append(dist[index])
+
+            # print(u'每个中心点到拟合曲线的距离：', ordered_dist)
+
+            # -------------------------------------- 竖直方向判断 --------------------------------
+            vertical_overlap_dict = {}
+
+            for i, roi in enumerate(ordered_rois):
+                index, (_, s1, _, e1), _ = roi
+
+                overlap_count = 0
+
+                for j, o_roi in enumerate(ordered_rois):
+                    o_index, (_, s2, _, e2), _ = o_roi
+                    # 跳过同一个roi
+                    if o_index == index:
+                        continue
+
+                    # 判断 roi 和 o_roi 的重叠部分
+                    if max(s1, s2) < min(e1, e2):  # 有交集
+                        IoU = (e1 - s1 + e2 - s2 - (max(e1, s1, e2, s2) - min(e1, s1, e2, s2))) / (
+                                    max(e1, s1, e2, s2) - min(e1, s1, e2, s2))
+                    else:  # 无交集
+                        IoU = 0
+
+                    if IoU > 0.5:
+                        overlap_count += 1
+
+                vertical_overlap_dict[index] = overlap_count
+
+                if overlap_count > 4:
+                    suspect_dict[index] -= 3
+                elif overlap_count > 2:
+                    suspect_dict[index] -= 2
+                elif overlap_count > 1:
+                    suspect_dict[index] -= 1
+                elif overlap_count == 0:
+                    suspect_dict[index] += 1
+
+            # -------------------------------------- 水平方向判断 --------------------------------
+
+            # 去掉 suspect dict > 0 的roi
+            for k, v in suspect_dict.items():
+                if v > 0:
+                    r['rois'][k] = np.array([0, 0, 0, 0])
+
+            for i, roi in enumerate(ordered_rois):
+                index, (s1, _, e1, _), _ = roi
+                if suspect_dict[index] > 0:
+                    continue
+
+                horizontal_overlap_count = 0
+
+                for j, o_roi in enumerate(ordered_rois):
+                    o_index, (s2, _, e2, _), _ = o_roi
+                    if suspect_dict[o_index] > 0:
+                        continue
+
+                    # 跳过同一个roi
+                    if o_index == index:
+                        continue
+
+                    # 判断 roi 和 o_roi 的重叠部分
+                    if max(s1, s2) < min(e1, e2):  # 有交集
+                        IoU = (e1 - s1 + e2 - s2 - (max(e1, s1, e2, s2) - min(e1, s1, e2, s2))) / (
+                                    max(e1, s1, e2, s2) - min(e1, s1, e2, s2))
+                    else:  # 无交集
+                        IoU = 0
+
+                    # 出现了冗余ROI
+                    if IoU > 0.5:
+                        if vertical_overlap_dict[index] < vertical_overlap_dict[o_index]:
+                            r['rois'][index] = np.array([0, 0, 0, 0])
+                        else:
+                            r['rois'][o_index] = np.array([0, 0, 0, 0])
+
+            # -------------------------------------- 然后去除椎间盘 -------------------------------
+            # 将ROI从上到下排序，每个tuple三个值： 1. 序号； 2. ROI； 3. mask； 4. mask 大小
+            ordered_rois = zip(range(len(r['rois'])),
+                               r['rois'],
+                               [r['masks'][:, :, i] for i in range(len(r['rois']))],
+                               [np.sum(r['masks'][:, :, i]) if np.any(r['rois'][i]) else 0 for i in
+                                range(len(r['rois']))])
+            ordered_rois = list(sorted(ordered_rois, key=lambda x: x[1][0]))
+
+            # pprint(ordered_rois)
+
+            # 面积列表
+            region_list = [x[3] for x in ordered_rois]
+
+            # print(region_list)
+
+            for i, roi in enumerate(ordered_rois):
+                index, box, mask, region = roi
+
+                # 不考虑第一个和最后一个
+                if i == 0 or i == len(ordered_rois) - 1 or region == 0:
+                    continue
+
+                # 如果这个ROI区域小于相邻两个ROI的60%，就认为是椎间盘
+                if region_list[i] < region_list[i - 1] * 0.6 and region_list[i] < region_list[i + 1] * 0.6:
+                    r['rois'][index] = np.array([0, 0, 0, 0])
+
+                # 如果这个ROI区域只小于相邻某个ROI的60%，需要进一步判断
+                if region_list[i] < region_list[i - 1] * 0.6 or region_list[i] < region_list[i + 1] * 0.6:
+                    added_mask = mask.astype(np.int64) + ordered_rois[i - 1][2].astype(np.int64)
+                    intersection = np.sum(np.isin(added_mask, [2]))
+                    if intersection > 100:
+                        r['rois'][index] = np.array([0, 0, 0, 0])
+
+                    added_mask = mask.astype(np.int64) + ordered_rois[i + 1][2].astype(np.int64)
+                    intersection = np.sum(np.isin(added_mask, [2]))
+                    if intersection > 100:
+                        r['rois'][index] = np.array([0, 0, 0, 0])
+
+            return r['rois']
+
+        for image_id in dataset.image_ids:
+            image, image_meta, gt_class_id, gt_bbox, gt_mask = \
+                modellib.load_image_gt(dataset, config, image_id, use_mini_mask=False)
+            info = dataset.image_info[image_id]
+            print("image ID: {}.{} ({}) {}".format(info["source"], info["id"], image_id,
+                                                   dataset.image_reference(image_id)))
+
+            # Run object detection
+            results = model.detect([image], verbose=1)
+
+            filtered_roi = roi_filter(image_id)
+
+            # Display results
+            ax = get_ax(1)
+            r = results[0]
+
+            file_name = os.path.join('/DATA5_DB8/data/sqpeng/Projects/Mask-RCNN-Vertebral-Segmentation/seg_results_new',
                                      f'{info["id"]}.png')
-            visualize.display_instances(image, r['rois'], r['masks'], r['class_ids'],
+            visualize.display_instances(image, filtered_roi, r['masks'], r['class_ids'],
                                         dataset.class_names, r['scores'], ax=ax,
-                                        title="Predictions",
+                                        title="Predictions_{}".format(info['id']),
                                         save_path=file_name)
+
+            ax = get_ax(rows=1, cols=2)
+            file_name = os.path.join('/DATA5_DB8/data/sqpeng/Projects/Mask-RCNN-Vertebral-Segmentation/seg_results_compare',
+                                     f'{info["id"]}.png')
+            visualize.display_instances_2(image, r['rois'], filtered_roi, r['masks'], r['class_ids'],
+                                          dataset.class_names, r['scores'], ax=ax,
+                                          title="Predictions_{}".format(info['id']),
+                                          save_path=file_name)
+
             print("Saved to ", file_name)
 
 ############################################################
