@@ -215,26 +215,6 @@ def train(model):
                 layers='heads')
 
 
-def color_splash(image, mask):
-    """Apply color splash effect.
-    image: RGB image [height, width, 3]
-    mask: instance segmentation mask [height, width, instance count]
-
-    Returns result image.
-    """
-    # Make a grayscale copy of the image. The grayscale copy still
-    # has 3 RGB channels, though.
-    gray = skimage.color.gray2rgb(skimage.color.rgb2gray(image)) * 255
-    # Copy color pixels from the original color image where mask is set
-    if mask.shape[-1] > 0:
-        # We're treating all instances as one, so collapse the mask into one layer
-        mask = (np.sum(mask, -1, keepdims=True) >= 1)
-        splash = np.where(mask, image, gray).astype(np.uint8)
-    else:
-        splash = gray.astype(np.uint8)
-    return splash
-
-
 def test(model, image_path=None):
     def get_ax(rows=1, cols=1, size=16):
         """Return a Matplotlib Axes array to be used in
@@ -351,7 +331,7 @@ def test(model, image_path=None):
                     # 判断 roi 和 o_roi 的重叠部分
                     if max(s1, s2) < min(e1, e2):  # 有交集
                         IoU = (e1 - s1 + e2 - s2 - (max(e1, s1, e2, s2) - min(e1, s1, e2, s2))) / (
-                                    max(e1, s1, e2, s2) - min(e1, s1, e2, s2))
+                                max(e1, s1, e2, s2) - min(e1, s1, e2, s2))
                     else:  # 无交集
                         IoU = 0
 
@@ -395,12 +375,12 @@ def test(model, image_path=None):
                     # 判断 roi 和 o_roi 的重叠部分
                     if max(s1, s2) < min(e1, e2):  # 有交集
                         IoU = (e1 - s1 + e2 - s2 - (max(e1, s1, e2, s2) - min(e1, s1, e2, s2))) / (
-                                    max(e1, s1, e2, s2) - min(e1, s1, e2, s2))
+                                max(e1, s1, e2, s2) - min(e1, s1, e2, s2))
                     else:  # 无交集
                         IoU = 0
 
                     # 出现了冗余ROI
-                    if IoU > 0.5:
+                    if IoU > 0.6:
                         if vertical_overlap_dict[index] < vertical_overlap_dict[o_index]:
                             r['rois'][index] = np.array([0, 0, 0, 0])
                         else:
@@ -429,20 +409,34 @@ def test(model, image_path=None):
                 if i == 0 or i == len(ordered_rois) - 1 or region == 0:
                     continue
 
+                # 首先，和上一个ROI区域的IoU要大于50%
+                (_, s1, _, e1) = box
+                (_, s2, _, e2) = ordered_rois[i - 1][1]
+                if max(s1, s2) < min(e1, e2):  # 有交集
+                    IoU = (e1 - s1 + e2 - s2 - (max(e1, s1, e2, s2) - min(e1, s1, e2, s2))) / (
+                            max(e1, s1, e2, s2) - min(e1, s1, e2, s2))
+                else:  # 无交集
+                    IoU = 0
+
+                if IoU < 0.5:
+                    continue
+
                 # 如果这个ROI区域小于相邻两个ROI的60%，就认为是椎间盘
                 if region_list[i] < region_list[i - 1] * 0.6 and region_list[i] < region_list[i + 1] * 0.6:
                     r['rois'][index] = np.array([0, 0, 0, 0])
 
                 # 如果这个ROI区域只小于相邻某个ROI的60%，需要进一步判断
-                if region_list[i] < region_list[i - 1] * 0.6 or region_list[i] < region_list[i + 1] * 0.6:
+                elif region_list[i] < region_list[i - 1] * 0.6 or region_list[i] < region_list[i + 1] * 0.6:
                     added_mask = mask.astype(np.int64) + ordered_rois[i - 1][2].astype(np.int64)
                     intersection = np.sum(np.isin(added_mask, [2]))
-                    if intersection > 100:
+                    # print(intersection)
+                    if intersection > 160:
                         r['rois'][index] = np.array([0, 0, 0, 0])
 
                     added_mask = mask.astype(np.int64) + ordered_rois[i + 1][2].astype(np.int64)
                     intersection = np.sum(np.isin(added_mask, [2]))
-                    if intersection > 100:
+                    # print(intersection)
+                    if intersection > 160:
                         r['rois'][index] = np.array([0, 0, 0, 0])
 
             return r['rois']
@@ -451,6 +445,8 @@ def test(model, image_path=None):
             image, image_meta, gt_class_id, gt_bbox, gt_mask = \
                 modellib.load_image_gt(dataset, config, image_id, use_mini_mask=False)
             info = dataset.image_info[image_id]
+            # if info['id'] != '2310393':
+            #     continue
             print("image ID: {}.{} ({}) {}".format(info["source"], info["id"], image_id,
                                                    dataset.image_reference(image_id)))
 

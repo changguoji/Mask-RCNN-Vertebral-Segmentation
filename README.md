@@ -37,7 +37,7 @@ voxel 在服务器上的位置：
  🌀 ***2018-10-30 17:28 Update***
 
 现在的思路是：将脊骨数据处理成COCO的格式，然后试试 Mask RCNN 在医疗图像上的效果。 
- 
+
 ### Training on Your Own Dataset
 
 Start by reading this [blog post about the balloon color splash sample](https://engineering.matterport.com/splash-of-color-instance-segmentation-with-mask-r-cnn-and-tensorflow-7c761e238b46). It covers the process starting from annotating images to training to using the results in a sample application.
@@ -57,31 +57,31 @@ all available in one dataset.
 See examples in `samples/shapes/train_shapes.ipynb`, `samples/coco/coco.py`, `samples/balloon/balloon.py`, and `samples/nucleus/nucleus.py`.
 
 例子 `samples/balloon/balloon.py` 和脊骨分割问题非常相似！
- 
+
  🌀 ***2018-10-31 15:47 Update***
- 
+
  在自己的脊骨数据集上训练，耗时不到1h，得到训练好的模型，路径：`/DATA5_DB8/data/sqpeng/Projects/Mask-RCNN-Vertebral-Segmentation/logs/vertebral20181030T2252/mask_rcnn_vertebral_0030.h5`
- 
+
  对模型预测以及分析参见 [inspect_vertebral_model.ipynb](https://github.com/pengshiqi/Mask-RCNN-Vertebral-Segmentation/blob/master/samples/vertebral/inspect_vertebral_model.ipynb)。
- 
+
  效果非常棒👍！毕竟 Mask-RCNN 是 state-of-the-art ...
- 
+
  后面要有所改进其实挺困难的... 可以有这样几个思路：
- 
+
  1. 考虑脊骨数据的特征，脊骨基本上是分布在一条曲线上，可以对模型加上一个曲线的约束。（感觉可以一试）
- 
+
  2. 利用 GAN 做数据增强。 （靠谱吗？宇博说训练数据太少）
- 
+
  🌀 ***2018-11-11 16:57 Update***
-  
+
  分割结果Demo：
- 
+
  ![](./img/Picture1.png)
- 
+
  ![](./img/Picture2.png)
-  
+
   🌀 ***2018-11-14 10:26 Update***
-  
+
   先去除附属器官的FP
 
   这里需要制定多个规则：
@@ -93,6 +93,21 @@ See examples in `samples/shapes/train_shapes.ipynb`, `samples/coco/coco.py`, `sa
   3. 保证横向没有重叠的
     
   然后再去除椎间盘的FP
-    
-  可以根据大小比例来判断
- 
+
+ 可以根据大小比例来判断
+
+  ~~误去除id: 2321474~~
+
+  **结果示例**：
+
+  ![](./img/Picture3.png)
+
+  🌀 ***2018-11-16 14:08 Update***
+
+  新增self-training: samples/vertebral/self_training_vertebral.py 
+  
+  ` CUDA_VISIBLE_DEVICES=0 python3 self_training_vertebral.py self_training --dataset=/DATA5_DB8/data/sqpeng/data/vertebrae1024 --weights=''`
+  
+  self_training 结果示例（第0次迭代（左）和第1次迭代（右））：
+  
+  ![](./img/Picture4.png)

@@ -326,6 +326,88 @@ def display_instances_2(image, boxes0, boxes1, masks, class_ids, class_names,
         plt.show()
 
 
+def display_instances_self_training(seg_results, show_mask=True, show_bbox=True,
+                                    colors=None, captions=None, save_path=None):
+    """
+    """
+    num_images = len(seg_results)
+
+    _, ax = plt.subplots(1, num_images, figsize=(16, 16))
+    auto_show = True
+
+    for index in range(num_images):
+        image, boxes, masks, class_ids, class_names, scores, title = seg_results[index]
+
+        # Number of instances
+        N = boxes.shape[0]
+        if not N:
+            print("\n*** No instances to display *** \n")
+        else:
+            assert boxes.shape[0] == masks.shape[-1] == class_ids.shape[0]
+
+        # Generate random colors
+        colors = random_colors(N)
+
+        # Show area outside image boundaries.
+        height, width = image.shape[:2]
+        ax[index].set_ylim(height + 10, -10)
+        ax[index].set_xlim(-10, width + 10)
+        ax[index].axis('off')
+        ax[index].set_title(title)
+
+        masked_image = image.astype(np.uint32).copy()
+        for i in range(N):
+            color = colors[i]
+
+            # Bounding box
+            if not np.any(boxes[i]):
+                # Skip this instance. Has no bbox. Likely lost in image cropping.
+                continue
+            y1, x1, y2, x2 = boxes[i]
+            if show_bbox:
+                p = patches.Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=2,
+                                      alpha=0.7, linestyle="dashed",
+                                      edgecolor=color, facecolor='none')
+                ax[index].add_patch(p)
+
+            # Label
+            if not captions:
+                class_id = class_ids[i]
+                score = scores[i] if scores is not None else None
+                label = class_names[class_id]
+                x = random.randint(x1, (x1 + x2) // 2)
+                # caption = "{} {:.3f}".format(label, score) if score else label
+                caption = ''
+            else:
+                caption = captions[i]
+            ax[index].text(x1, y1 + 8, caption,
+                    color='w', size=11, backgroundcolor="none")
+
+            # Mask
+            mask = masks[:, :, i]
+            if show_mask:
+                masked_image = apply_mask(masked_image, mask, color)
+
+            # Mask Polygon
+            # Pad to ensure proper polygons for masks that touch image edges.
+            padded_mask = np.zeros(
+                (mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
+            padded_mask[1:-1, 1:-1] = mask
+            contours = find_contours(padded_mask, 0.5)
+            for verts in contours:
+                # Subtract the padding and flip (y, x) to (x, y)
+                verts = np.fliplr(verts) - 1
+                p = Polygon(verts, facecolor="none", edgecolor=color)
+                ax[index].add_patch(p)
+
+        ax[index].imshow(masked_image.astype(np.uint8))
+
+    if save_path:
+        plt.savefig(save_path)
+    elif auto_show:
+        plt.show()
+
+
 def display_differences(image,
                         gt_box, gt_class_id, gt_mask,
                         pred_box, pred_class_id, pred_score, pred_mask,
